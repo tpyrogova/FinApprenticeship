@@ -19,10 +19,11 @@ def parse_arguments():
 	parser.add_argument('-c', '--cnt', type=int, default=0, help="For Debugging: Start with this file")
 	return parser.parse_args()
 
-def save_file(df):
-	if not os.path.exists(output_dir):
-		os.makedirs(output_dir)
-	df.to_csv(output_file)
+def save_dataframe(df, filename=output_file):
+	dirname = os.path.dirname(filename)
+	if dirname and not os.path.exists(dirname):
+		os.makedirs(dirname, exist_ok=True)
+	df.to_csv(filename)
 
 def get_dropdown_values(soup, select_id):
 	"""Extract values from dropdown menu"""
@@ -57,7 +58,7 @@ def rename_columns(df):
 						new_column_name = new_column_name_start
 					else:
 						new_column_name += f' {header}'
-			new_column_names[col] = new_column_name
+			new_column_names[col] = new_column_name.replace('\n', ' ')
 		df.rename(columns=new_column_names, inplace=True)
 	except Exception as e:
 		print(type(e).__name__, '-', e)
@@ -80,16 +81,18 @@ def main(args):
 	years = get_dropdown_values(soup, 'st_year')
 	
 	print(f'===> {len(attributes)} attributes, {len(occupations)} occupations, {len(countries)} countries, {len(years)} years')
+	complete = len(attributes) * len(occupations) * len(countries)
 	
 	cnt = 0
 	df = pd.DataFrame()
+	start = time.time()
 	for country_id, country_name in countries:
 		for occ_id, occ_name in occupations:
 			df_occ = pd.DataFrame()
 			for attr_id, attr_name in attributes:
 				year_id, year_name = years[0]
 				url_download = url_excel.format(attribute=attr_id, occupation=occ_id, year=year_id, country=country_id)
-				print(f'{cnt:4d}', colored(url_download, 'green' if cnt >= args.cnt else 'red'))
+				print(f'{cnt:5d} / {complete} {round(time.time() - start):6d}s', colored(url_download, 'green' if cnt >= args.cnt else 'red'))
 				if cnt >= args.cnt:
 					resp_xls = requests.get(url_download)
 					xls = pd.read_excel(BytesIO(resp_xls.content), sheet_name=None)
@@ -100,17 +103,18 @@ def main(args):
 							df_attr.insert(2, 'Region', country_name)
 							df_attr.insert(3, 'Merkmal', attr_name)
 							if 'Jahr' in df_occ.columns and 'Jahr' in df_attr.columns: 
-								df_occ = pd.merge(df_occ, df_attr, suffixes=(None, attr_id), on=['Jahr', 'Beruf', 'Region', 'Merkmal'], how='outer')
+								df_occ = pd.merge(df_occ, df_attr, suffixes=(None, '_'+attr_id), on=['Jahr', 'Beruf', 'Region', 'Merkmal'], how='outer')
 							else:
 								df_occ = pd.concat([df_occ, df_attr], axis=1)
-							df_occ.to_csv(f'data/dazubi_{cnt:04d}.csv')
+							save_dataframe(df_occ, f'{output_dir}/attr/dazubi_{cnt:06d}.csv')
 					# add sleep to avoid overwhelming the server
-					time.sleep(5)
+					time.sleep(2)
 				cnt += 1
 			df = pd.concat([df, df_occ])
+			save_dataframe(df, f'{output_dir}/occ/dazubi_{cnt:06d}.csv')
 	print(f'===> {cnt} files donwloaded')
 	df.info()
-	save_file(df)
+	save_dataframe(df)
 
 if __name__ == '__main__':
 	main(parse_arguments())
