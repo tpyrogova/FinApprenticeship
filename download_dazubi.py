@@ -110,6 +110,7 @@ def main(args):
 					time.sleep(1)
 				cnt += 1
 			df = pd.concat([df, df_occ])
+			df.reset_index(inplace=True, drop=True)
 			save_dataframe(df, f'{output_dir}/occ/dazubi_{cnt:06d}.csv')
 	print(f'===> {cnt} files donwloaded')
 	df.info()
