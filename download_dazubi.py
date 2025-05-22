@@ -101,14 +101,13 @@ def main(args):
 							df_attr = rename_columns(df_attr)
 							df_attr.insert(1, 'Beruf', occ_name)
 							df_attr.insert(2, 'Region', country_name)
-							df_attr.insert(3, 'Merkmal', attr_name)
 							if 'Jahr' in df_occ.columns and 'Jahr' in df_attr.columns: 
-								df_occ = pd.merge(df_occ, df_attr, suffixes=(None, '_'+attr_id), on=['Jahr', 'Beruf', 'Region', 'Merkmal'], how='outer')
+								df_occ = pd.merge(df_occ, df_attr, suffixes=(None, '_'+attr_id), on=['Jahr', 'Beruf', 'Region'], how='outer')
 							else:
 								df_occ = pd.concat([df_occ, df_attr], axis=1)
 							save_dataframe(df_occ, f'{output_dir}/attr/dazubi_{cnt:06d}.csv')
 					# add sleep to avoid overwhelming the server
-					time.sleep(2)
+					time.sleep(1)
 				cnt += 1
 			df = pd.concat([df, df_occ])
 			save_dataframe(df, f'{output_dir}/occ/dazubi_{cnt:06d}.csv')
