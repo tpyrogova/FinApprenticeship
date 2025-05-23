@@ -157,7 +157,7 @@ def main(args: argparse.Namespace):
 								df_attr.insert(2, 'Region', country_name)
 								if 'Jahr' in df_occ.columns and 'Jahr' in df_attr.columns: 
 									# take Beruf and Region in the on-clause to not duplicate these columns
-									df_occ = pd.merge(df_occ, df_attr, suffixes=(None, f'_{attr_id}'), on=['Jahr', 'Beruf', 'Region'], how='outer')
+									df_occ = pd.merge(df_occ, df_attr, suffixes=(None, f'_{attr_id}'t), on=['Jahr', 'Beruf', 'Region'], how='outer')
 								else:
 									df_occ = pd.concat([df_occ, df_attr], axis=1)
 								if args.save_attributes: save_dataframe(df_occ, f'{output_dir_attr}/dazubi_{cnt:06d}.csv')
