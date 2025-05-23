@@ -92,8 +92,6 @@ def main(args):
 			for attr_id, attr_name in attributes:
 				year_id, year_name = years[0]
 				url_download = url_excel.format(attribute=attr_id, occupation=occ_id, year=year_id, country=country_id)
-				if cnt >= args.cnt:
-					print(f'{cnt:5d} / {complete} {round(time.time() - start):6d}s', colored(url_download, 'green' if cnt >= args.cnt else 'red'))
 					resp_xls = requests.get(url_download)
 					xls = pd.read_excel(BytesIO(resp_xls.content), sheet_name=None)
 					for sheet, df_attr in xls.items():
