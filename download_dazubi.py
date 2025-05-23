@@ -109,8 +109,9 @@ def restore_download() -> Tuple[int, DataFrame]:
 				max_number = number
 				max_filename = filename
 	if max_filename is not None:
-		print(f'===> restore file {max_filename}')
-		return max_number+1, pd.read_csv(os.path.join(output_dir_occ, max_filename))
+		df = pd.read_csv(os.path.join(output_dir_occ, max_filename))
+		print(f'===> restore file {max_filename} with {len(df)} rows')
+		return max_number+1, df
 	else:
 		print('===> Nothing to restore')
 		return 0, pd.DataFrame()
@@ -147,7 +148,7 @@ def main(args: argparse.Namespace):
 					year_id, year_name = years[0]
 					url_download = url_excel.format(attribute=attr_id, occupation=occ_id, year=year_id, country=country_id)
 					if cnt >= start_with:
-						print(f'{cnt:5d} / {complete} {round(time.time() - start):6d}s {url_download}')
+						print(f'{cnt:6d} / {complete} {round(time.time() - start):6d}s {url_download}')
 						resp_xls = requests.get(url_download)
 						xls = pd.read_excel(BytesIO(resp_xls.content), sheet_name=None)
 						for sheet, df_attr in xls.items():
@@ -164,9 +165,10 @@ def main(args: argparse.Namespace):
 						# add sleep to avoid overwhelming the server
 						time.sleep(args.sleep)
 					cnt += 1
-				df = pd.concat([df, df_occ])
-				df.reset_index(inplace=True, drop=True)
-				save_dataframe(df, f'{output_dir_occ}/dazubi_{cnt:06d}.csv')
+				if (len(df_occ) > 0):
+					df = pd.concat([df, df_occ])
+					df.reset_index(inplace=True, drop=True)
+					save_dataframe(df, f'{output_dir_occ}/dazubi_{cnt:06d}.csv')
 		save_dataframe(df)
 	print(f'===> {cnt} files donwloaded')
 	df.info()
