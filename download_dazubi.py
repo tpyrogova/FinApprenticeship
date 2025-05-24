@@ -5,7 +5,7 @@ from io import BytesIO
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-from termcolor import colored
+import term
 
 # Base URL and directory for saving files
 url = "https://www.bibb.de/dienst/dazubi/de/2252.php"
@@ -23,14 +23,35 @@ def parse_arguments():
 	parser.add_argument('-w', '--start-with', type=int, default=0, help="For Debugging: Start with this file and skip the previous ones.")
 	parser.add_argument('-a', '--save-attributes', action='store_true', help="For Debugging: Save csv file after each attribute. You only need this, if you want to check the parsing of single Excel files.")
 	parser.add_argument('-d', '--download', action='store_true', help='Start the download process. You have to give this option, to do anything.')
-	parser.add_argument('-s', '--sleep', default=1, type=int, help='Time to sleep between the individuel downloads. Use a reasonable value to not overwhelming the server.')
+	parser.add_argument('-s', '--sleep', default=1.0, type=float, help='Time to sleep between the individuel downloads. Use a reasonable value to not overwhelming the server.')
 	return parser.parse_args()
 
 def save_dataframe(df: pd.DataFrame, filename: str = output_file):
-	dirname = os.path.dirname(filename)
-	if dirname and not os.path.exists(dirname):
-		os.makedirs(dirname, exist_ok=True)
-	df.to_csv(filename)
+    """
+    Save a pandas DataFrame to a CSV file safely.
+
+    The function writes the DataFrame to a temporary file first and then atomically replaces the target file.
+    This prevents data corruption if the process is interrupted. If the target directory does not exist, it is created.
+    If interrupted by a KeyboardInterrupt, the temporary file is removed before raising the exception.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to save.
+        filename (str, optional): The path to the output CSV file. Defaults to the global 'output_file'.
+
+    Raises:
+        KeyboardInterrupt: If interrupted, removes the temporary file if it exists and re-raises the exception.
+    """
+    dirname = os.path.dirname(filename)
+    if dirname and not os.path.exists(dirname):
+        os.makedirs(dirname, exist_ok=True)
+    tmp_filename = filename + '.tmp'
+    try:
+        df.to_csv(tmp_filename)
+        os.replace(tmp_filename, filename)
+    except KeyboardInterrupt:
+        if os.path.exists(tmp_filename):
+            os.remove(tmp_filename)
+        raise
 
 def get_dropdown_values(soup: BeautifulSoup, select_id: str):
 	"""Extract values from dropdown menu"""
@@ -101,20 +122,42 @@ def restore_download() -> Tuple[int, DataFrame]:
 	pattern = re.compile(r'dazubi_(\d+)\.csv$')
 	max_number = -1
 	max_filename = None
-	for filename in os.listdir(output_dir_occ):
-		match = pattern.match(filename)
-		if match:
-			number = int(match.group(1))
-			if number > max_number:
-				max_number = number
-				max_filename = filename
+	if os.path.exists(output_dir_occ):
+		for filename in os.listdir(output_dir_occ):
+			match = pattern.match(filename)
+			if match:
+				number = int(match.group(1))
+				if number > max_number:
+					max_number = number
+					max_filename = filename
 	if max_filename is not None:
-		df = pd.read_csv(os.path.join(output_dir_occ, max_filename))
+		df = pd.read_csv(os.path.join(output_dir_occ, max_filename), index_col=0)
 		print(f'===> restore file {max_filename} with {len(df)} rows')
 		return max_number+1, df
 	else:
 		print('===> Nothing to restore')
 		return 0, pd.DataFrame()
+
+def download_convert(url: str, retries=5) -> dict[str, pd.DataFrame]:
+	xls = None
+	r = 0
+	# we use while instead of for, so pylace doesn't complain about the return type
+	# if the creation of the DataFrame was successful, we return it
+	# if we got an exception, we retry a fixed number of times and than raise the error 
+	# in both cases we break out of the while loop
+	while True:
+		response = None
+		try:
+			response = requests.get(url)
+			xls = pd.read_excel(BytesIO(response.content), sheet_name=None)
+			return xls
+		except Exception as e:
+			print(f'{r} attempt, Exception: {type(e).__name__} - {e}')
+			if response is not None:
+				print(f'Status: {response.status_code}, Content-Type: {response.headers.get("Content-Type")}, Content-Length: {response.headers.get("Content-Length")}')
+			if r >= retries: raise
+			else: r += 1
+
 
 def main(args: argparse.Namespace):
 	# Get initial page
@@ -133,6 +176,7 @@ def main(args: argparse.Namespace):
 	cnt = 0
 	start_with, df = restore_download()
 	start_with = max(start_with, args.start_with)
+	print('\n')
 	if (args.download):
 		start = time.time()
 		# iterate over each country, each occupation and each attribute
@@ -148,9 +192,12 @@ def main(args: argparse.Namespace):
 					year_id, year_name = years[0]
 					url_download = url_excel.format(attribute=attr_id, occupation=occ_id, year=year_id, country=country_id)
 					if cnt >= start_with:
+						term.up(value=1)
+						term.clearLine()
+						term.up(value=1)
+						term.clearLine()
 						print(f'{cnt:6d} / {complete} {round(time.time() - start):6d}s {url_download}')
-						resp_xls = requests.get(url_download)
-						xls = pd.read_excel(BytesIO(resp_xls.content), sheet_name=None)
+						xls = download_convert(url_download)
 						for sheet, df_attr in xls.items():
 							if sheet != 'Deckblatt':
 								df_attr = rename_columns(df_attr)
