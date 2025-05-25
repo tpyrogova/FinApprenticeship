@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import os, re, math, time, argparse
+import os, re, math, time, argparse, glob, sys
 from typing import Optional, Tuple
 from io import BytesIO
 import requests
@@ -26,33 +26,81 @@ def parse_arguments():
 	parser.add_argument('-s', '--sleep', default=1.0, type=float, help='Time to sleep between the individuel downloads. Use a reasonable value to not overwhelming the server.')
 	return parser.parse_args()
 
-def save_dataframe(df: pd.DataFrame, filename: str = output_file):
-    """
-    Safely save a pandas DataFrame to a CSV file.
+def cleanup_dazubi_files(dir, keep: int = 10):
+	"""
+	Deletes all files in the directory matching the pattern 'dazubi_<number>.csv',
+	but keeps the 'keep' files with the highest numbers.
+	Before deletion, it checks that all files with a lower number are also smaller in size
+	and older than those with a higher number. Only if this is true for all files, deletion is performed.
 
-    The DataFrame is first written to a temporary file. Once writing is successful, the temporary file is atomically
-    moved to the target location to prevent data corruption. If the target directory does not exist, it is created.
-    If a KeyboardInterrupt or OSError occurs during saving, the temporary file is removed before re-raising the exception.
+	Args:
+		dir (str): Path to the directory containing the files to be cleaned up.
+		keep (int): Number of most recent files to keep. Older files will be deleted if conditions are met.
+	Raises:
+		RuntimeError: If a file with a lower number is not smaller and older than a file with a higher number.
+	"""
+	pattern = os.path.join(dir, "dazubi_*.csv")
+	files = []
+	for path in glob.glob(pattern):
+		basename = os.path.basename(path)
+		match = re.match(r'dazubi_(\d+)\.csv$', basename)
+		if match:
+			num = int(match.group(1))
+			stat = os.stat(path)
+			files.append({
+				"path": path,
+				"num": num,
+				"size": stat.st_size,
+				"mtime": stat.st_mtime
+			})
+	if len(files) <= keep:
+		print("Nothing to do, there are", len(files), "files (less than or equal to", keep, ").")
+		return
 
-    Args:
-        df (pd.DataFrame): The DataFrame to save.
-        filename (str, optional): The path to the output CSV file. Defaults to the global 'output_file'.
+	# Sort by number (ascending)
+	files.sort(key=lambda x: x["num"])
+	# Check: Each file with a lower number must be smaller and older than each file with a higher number
+	for i in range(len(files)):
+		for j in range(i+1, len(files)):
+			if not (files[i]["size"] <= files[j]["size"] and files[i]["mtime"] <= files[j]["mtime"]):
+				raise RuntimeError(
+					f"File {files[i]['path']} is not smaller/older than {files[j]['path']}.\n"
+					f"Properties of files:\n\t{files[i]}\nvs.\n\t{files[j]}"
+				)
 
-    Raises:
-        KeyboardInterrupt: If interrupted, removes the temporary file if it exists and re-raises the exception.
-        OSError: If an OS error occurs, removes the temporary file if it exists and re-raises the exception.
-    """
-    dirname = os.path.dirname(filename)
-    if dirname and not os.path.exists(dirname):
-        os.makedirs(dirname, exist_ok=True)
-    tmp_filename = filename + '.tmp'
-    try:
-        df.to_csv(tmp_filename)
-        os.replace(tmp_filename, filename)
-    except KeyboardInterrupt | OSError:
-        if os.path.exists(tmp_filename):
-            os.remove(tmp_filename)
-        raise
+	for f in files[:-keep]:
+		print("Deleting:", f['path'])
+		os.remove(f['path'])
+
+def save_dataframe(df: pd.DataFrame, filename: str = output_file, delete_old_files: bool = True):
+	"""
+	Safely save a pandas DataFrame to a CSV file.
+
+	The DataFrame is first written to a temporary file. Once writing is successful, the temporary file is atomically
+	moved to the target location to prevent data corruption. If the target directory does not exist, it is created.
+	If a KeyboardInterrupt or OSError occurs during saving, the temporary file is removed before re-raising the exception.
+
+	Args:
+			df (pd.DataFrame): The DataFrame to save.
+			filename (str, optional): The path to the output CSV file. Defaults to the global 'output_file'.
+
+	Raises:
+			KeyboardInterrupt: If interrupted, removes the temporary file if it exists and re-raises the exception.
+			OSError: If an OS error occurs, removes the temporary file if it exists and re-raises the exception.
+	"""
+	dirname = os.path.dirname(filename)
+	if dirname and not os.path.exists(dirname):
+		os.makedirs(dirname, exist_ok=True)
+	tmp_filename = filename + '.tmp'
+	try:
+		df.to_csv(tmp_filename)
+		os.replace(tmp_filename, filename)
+		if delete_old_files:
+			cleanup_dazubi_files(dirname)
+	except (KeyboardInterrupt, OSError, RuntimeError):
+		if os.path.exists(tmp_filename):
+			os.remove(tmp_filename)
+		raise
 
 def get_dropdown_values(soup: BeautifulSoup, select_id: str):
 	"""Extract values from dropdown menu"""
@@ -132,9 +180,13 @@ def restore_download() -> Tuple[int, DataFrame]:
 					max_number = number
 					max_filename = filename
 	if max_filename is not None:
-		df = pd.read_csv(os.path.join(output_dir_occ, max_filename), index_col=0)
-		print(f'===> restore file {max_filename} with {len(df)} rows')
-		return max_number+1, df
+		try:
+			df = pd.read_csv(os.path.join(output_dir_occ, max_filename), index_col=0)
+			print(f'===> restore file {max_filename} with {len(df)} rows')
+			return max_number+1, df
+		except Exception as e:
+			print(f'{term.red}Can not read the file {max_filename}. Remove the file and restart.', file=sys.stderr)
+			raise
 	else:
 		print('===> Nothing to restore')
 		return 0, pd.DataFrame()
@@ -158,7 +210,6 @@ def download_convert(url: str, retries=5) -> dict[str, pd.DataFrame]:
 				print(f'Status: {response.status_code}, Content-Type: {response.headers.get("Content-Type")}, Content-Length: {response.headers.get("Content-Length")}')
 			if r >= retries: raise
 			else: r += 1
-
 
 def main(args: argparse.Namespace):
 	# Get initial page
