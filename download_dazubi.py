@@ -48,7 +48,7 @@ def save_dataframe(df: pd.DataFrame, filename: str = output_file):
     try:
         df.to_csv(tmp_filename)
         os.replace(tmp_filename, filename)
-    except KeyboardInterrupt:
+    except KeyboardInterrupt | OSError:
         if os.path.exists(tmp_filename):
             os.remove(tmp_filename)
         raise
