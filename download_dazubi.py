@@ -28,11 +28,11 @@ def parse_arguments():
 
 def save_dataframe(df: pd.DataFrame, filename: str = output_file):
     """
-    Save a pandas DataFrame to a CSV file safely.
+    Safely save a pandas DataFrame to a CSV file.
 
-    The function writes the DataFrame to a temporary file first and then atomically replaces the target file.
-    This prevents data corruption if the process is interrupted. If the target directory does not exist, it is created.
-    If interrupted by a KeyboardInterrupt, the temporary file is removed before raising the exception.
+    The DataFrame is first written to a temporary file. Once writing is successful, the temporary file is atomically
+    moved to the target location to prevent data corruption. If the target directory does not exist, it is created.
+    If a KeyboardInterrupt or OSError occurs during saving, the temporary file is removed before re-raising the exception.
 
     Args:
         df (pd.DataFrame): The DataFrame to save.
@@ -40,6 +40,7 @@ def save_dataframe(df: pd.DataFrame, filename: str = output_file):
 
     Raises:
         KeyboardInterrupt: If interrupted, removes the temporary file if it exists and re-raises the exception.
+        OSError: If an OS error occurs, removes the temporary file if it exists and re-raises the exception.
     """
     dirname = os.path.dirname(filename)
     if dirname and not os.path.exists(dirname):
