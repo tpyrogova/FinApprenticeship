@@ -13,7 +13,7 @@ url_excel = "https://www.bibb.de/dienst/dazubi/dazubi/timeserie/download/timeser
 output_dir = "data"
 output_dir_occ = f"{output_dir}/occ"
 output_dir_attr = f"{output_dir}/attr"
-output_file = output_dir + '/dazubi.csv'
+output_file = output_dir + '/dazubi_complete.csv'
 
 def parse_arguments():
 	parser = argparse.ArgumentParser(
