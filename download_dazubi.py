@@ -69,6 +69,8 @@ def cleanup_dazubi_files(dir, keep: int = 10):
 				)
 
 	for f in files[:-keep]:
+		term.up(value=1)
+		term.clearLine()
 		print("Deleting:", f['path'])
 		os.remove(f['path'])
 
@@ -93,6 +95,10 @@ def save_dataframe(df: pd.DataFrame, filename: str = output_file, delete_old_fil
 		os.makedirs(dirname, exist_ok=True)
 	tmp_filename = filename + '.tmp'
 	try:
+		term.up(value=2)
+		term.clearLine()
+		print(f'Saving: {filename}')
+		term.down(value=1)
 		df.to_csv(tmp_filename)
 		os.replace(tmp_filename, filename)
 		if delete_old_files:
@@ -228,7 +234,7 @@ def main(args: argparse.Namespace):
 	cnt = 0
 	start_with, df = restore_download()
 	start_with = max(start_with, args.start_with)
-	print('\n')
+	print('\n\n\n')
 	if (args.download):
 		start = time.time()
 		# iterate over each country, each occupation and each attribute
@@ -244,11 +250,13 @@ def main(args: argparse.Namespace):
 					year_id, year_name = years[0]
 					url_download = url_excel.format(attribute=attr_id, occupation=occ_id, year=year_id, country=country_id)
 					if cnt >= start_with:
+						term.up(value=2)
 						term.up(value=1)
 						term.clearLine()
 						term.up(value=1)
 						term.clearLine()
 						print(f'{cnt:6d} / {complete} {round(time.time() - start):6d}s {url_download}')
+						term.down(value=2)
 						xls = download_convert(url_download)
 						for sheet, df_attr in xls.items():
 							if sheet != 'Deckblatt':
