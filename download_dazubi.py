@@ -25,9 +25,11 @@ def parse_arguments():
 	parser.add_argument('-d', '--download', action='store_true', help='Start the download process. You have to give this option, to do anything.')
 	parser.add_argument('-s', '--sleep', default=1.0, type=float, help='Time to sleep between the individuel downloads. Use a reasonable value to not overwhelming the server.')
 	parser.add_argument('-x', '--write-skip', type=int, default=0, help='Write only each x\'th file.')
+	parser.add_argument('-n', '--no-sanity-check', action='store_true', help='No sanity check when deleting old files.')
+	parser.add_argument('-c', '--compress', action='store_true', help='Compress the CSV files.')
 	return parser.parse_args()
 
-def cleanup_dazubi_files(dir, keep: int = 10):
+def cleanup_dazubi_files(dir, keep: int = 10, sanity_check: bool = True):
 	"""
 	Deletes all files in the directory matching the pattern 'dazubi_<number>.csv',
 	but keeps the 'keep' files with the highest numbers.
@@ -40,11 +42,11 @@ def cleanup_dazubi_files(dir, keep: int = 10):
 	Raises:
 		RuntimeError: If a file with a lower number is not smaller and older than a file with a higher number.
 	"""
-	pattern = os.path.join(dir, "dazubi_*.csv")
+	pattern = os.path.join(dir, "dazubi_*.csv*")
 	files = []
 	for path in glob.glob(pattern):
 		basename = os.path.basename(path)
-		match = re.match(r'dazubi_(\d+)\.csv$', basename)
+		match = re.match(r'dazubi_(\d+)\.csv.*$', basename)
 		if match:
 			num = int(match.group(1))
 			stat = os.stat(path)
@@ -62,14 +64,16 @@ def cleanup_dazubi_files(dir, keep: int = 10):
 
 	# Sort by number (ascending)
 	files.sort(key=lambda x: x["num"])
-	# Check: Each file with a lower number must be smaller and older than each file with a higher number
-	for i in range(len(files)):
-		for j in range(i+1, len(files)):
-			if not (files[i]["size"] <= files[j]["size"] and files[i]["mtime"] <= files[j]["mtime"]):
-				raise RuntimeError(
-					f"File {files[i]['path']} is not smaller/older than {files[j]['path']}.\n"
-					f"Properties of files:\n\t{files[i]}\nvs.\n\t{files[j]}"
-				)
+
+	if sanity_check:
+		# Check: Each file with a lower number must be smaller and older than each file with a higher number
+		for i in range(len(files)):
+			for j in range(i+1, len(files)):
+				if not (files[i]["size"] <= files[j]["size"] and files[i]["mtime"] <= files[j]["mtime"]):
+					raise RuntimeError(
+						f"File {files[i]['path']} is not smaller/older than {files[j]['path']}.\n"
+						f"Properties of files:\n\t{files[i]}\nvs.\n\t{files[j]}"
+					)
 
 	for f in files[:-keep]:
 		term.up(value=1)
@@ -77,35 +81,51 @@ def cleanup_dazubi_files(dir, keep: int = 10):
 		print("Deleting:", f['path'])
 		os.remove(f['path'])
 
-def save_dataframe(df: pd.DataFrame, filename: str = output_file, delete_old_files: bool = True):
+from typing import Literal
+
+def save_dataframe(
+	df: pd.DataFrame,
+	filename: str = output_file,
+	compress: bool = False,
+	# compression: Literal['bz2', 'zip', 'gzip', 'xz'] = None,
+	delete_old_files: bool = True,
+	sanity_check: bool = True
+):
 	"""
 	Safely save a pandas DataFrame to a CSV file.
 
 	The DataFrame is first written to a temporary file. Once writing is successful, the temporary file is atomically
 	moved to the target location to prevent data corruption. If the target directory does not exist, it is created.
-	If a KeyboardInterrupt or OSError occurs during saving, the temporary file is removed before re-raising the exception.
+	If a KeyboardInterrupt, OSError, or RuntimeError occurs during saving, the temporary file is removed before re-raising the exception.
+	If delete_old_files is True, old files in the directory are cleaned up after saving.
 
 	Args:
-			df (pd.DataFrame): The DataFrame to save.
-			filename (str, optional): The path to the output CSV file. Defaults to the global 'output_file'.
+		df (pd.DataFrame): The DataFrame to save.
+		filename (str, optional): The path to the output CSV file. Defaults to the global 'output_file'.
+		compression (Literal['bz2', 'zip', 'gzip', 'xz'], optional): Compression mode. Allowed values are the same as pandas.DataFrame.to_csv 'compression' parameter.
+		delete_old_files (bool, optional): If True, calls cleanup_dazubi_files to remove old files after saving.
 
 	Raises:
-			KeyboardInterrupt: If interrupted, removes the temporary file if it exists and re-raises the exception.
-			OSError: If an OS error occurs, removes the temporary file if it exists and re-raises the exception.
+		KeyboardInterrupt: If interrupted, removes the temporary file if it exists and re-raises the exception.
+		OSError: If an OS error occurs, removes the temporary file if it exists and re-raises the exception.
+		RuntimeError: If cleanup_dazubi_files raises an error, removes the temporary file if it exists and re-raises the exception.
 	"""
+	compression = 'bz2'
 	dirname = os.path.dirname(filename)
 	if dirname and not os.path.exists(dirname):
 		os.makedirs(dirname, exist_ok=True)
+	if compress:
+		filename += '.' + compression
 	tmp_filename = filename + '.tmp'
 	try:
 		term.up(value=2)
 		term.clearLine()
 		print(f'Saving: {filename}')
 		term.down(value=1)
-		df.to_csv(tmp_filename)
+		df.to_csv(tmp_filename, compression=compression if compress else None)
 		os.replace(tmp_filename, filename)
 		if delete_old_files:
-			cleanup_dazubi_files(dirname)
+			cleanup_dazubi_files(dirname, sanity_check=sanity_check)
 	except (KeyboardInterrupt, OSError, RuntimeError):
 		if os.path.exists(tmp_filename):
 			os.remove(tmp_filename)
@@ -177,7 +197,7 @@ def restore_download() -> Tuple[int, DataFrame]:
 		highest number + 1 - use this as index for the next file to download
 		DataFrame with data from the last csv file
 	'''
-	pattern = re.compile(r'dazubi_(\d+)\.csv$')
+	pattern = re.compile(r'dazubi_(\d+)\.csv.*$')
 	max_number = -1
 	max_filename = None
 	if os.path.exists(output_dir_occ):
@@ -272,7 +292,7 @@ def main(args: argparse.Namespace):
 									df_occ = pd.merge(df_occ, df_attr, suffixes=(None, f'_{attr_id}'), on=['Jahr', 'Beruf', 'Region'], how='outer')
 								else:
 									df_occ = pd.concat([df_occ, df_attr], axis=1)
-								if args.save_attributes: save_dataframe(df_occ, f'{output_dir_attr}/dazubi_{cnt:06d}.csv')
+								if args.save_attributes: save_dataframe(df_occ, f'{output_dir_attr}/dazubi_{cnt:06d}.csv', compress=args.compress, sanity_check=not args.no_sanity_check)
 						# add sleep to avoid overwhelming the server
 						time.sleep(args.sleep)
 					cnt += 1
@@ -280,11 +300,11 @@ def main(args: argparse.Namespace):
 					df = pd.concat([df, df_occ])
 					df.reset_index(inplace=True, drop=True)
 					if cnt_write >= args.write_skip:
-						save_dataframe(df, f'{output_dir_occ}/dazubi_{cnt:06d}.csv')
+						save_dataframe(df, f'{output_dir_occ}/dazubi_{cnt:06d}.csv', sanity_check=not args.no_sanity_check, compress=args.compress)
 						cnt_write = 0
 					else:
 						cnt_write += 1
-		save_dataframe(df)
+		save_dataframe(df, compress=args.compress)
 	print(f'===> {cnt} files donwloaded')
 	df.info()
 
