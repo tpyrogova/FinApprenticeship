@@ -55,6 +55,8 @@ def cleanup_dazubi_files(dir, keep: int = 10):
 				"mtime": stat.st_mtime
 			})
 	if len(files) <= keep:
+		term.up(value=1)
+		term.clearLine()
 		print("Nothing to do, there are", len(files), "files (less than or equal to", keep, ").")
 		return
 
