@@ -24,6 +24,7 @@ def parse_arguments():
 	parser.add_argument('-a', '--save-attributes', action='store_true', help="For Debugging: Save csv file after each attribute. You only need this, if you want to check the parsing of single Excel files.")
 	parser.add_argument('-d', '--download', action='store_true', help='Start the download process. You have to give this option, to do anything.')
 	parser.add_argument('-s', '--sleep', default=1.0, type=float, help='Time to sleep between the individuel downloads. Use a reasonable value to not overwhelming the server.')
+	parser.add_argument('-x', '--write-skip', type=int, default=0, help='Write only each x\'th file.')
 	return parser.parse_args()
 
 def cleanup_dazubi_files(dir, keep: int = 10):
@@ -232,6 +233,7 @@ def main(args: argparse.Namespace):
 	complete = len(attributes) * len(occupations) * len(countries)
 	
 	cnt = 0
+	cnt_write = 0
 	start_with, df = restore_download()
 	start_with = max(start_with, args.start_with)
 	print('\n\n\n')
@@ -275,7 +277,11 @@ def main(args: argparse.Namespace):
 				if (len(df_occ) > 0):
 					df = pd.concat([df, df_occ])
 					df.reset_index(inplace=True, drop=True)
-					save_dataframe(df, f'{output_dir_occ}/dazubi_{cnt:06d}.csv')
+					if cnt_write >= args.write_skip:
+						save_dataframe(df, f'{output_dir_occ}/dazubi_{cnt:06d}.csv')
+						cnt_write = 0
+					else:
+						cnt_write += 1
 		save_dataframe(df)
 	print(f'===> {cnt} files donwloaded')
 	df.info()
