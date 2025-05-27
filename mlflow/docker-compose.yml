@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  mlflow:
+    build: .
+    container_name: mlflow-app
+    restart: always
+    volumes:
+      - ./mlflow_data:/mlflow_data
+    expose:
+      - "5000"
+
+  nginx:
+    image: nginx:latest
+    container_name: mlflow-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - mlflow
