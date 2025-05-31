@@ -131,6 +131,7 @@ dmypy.json
 
 data/*.csv
 data/*.parquet
+data/*.pickle
 models/*.sav
 mlruns
 models/*
