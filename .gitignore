@@ -139,3 +139,5 @@ models/*
 
 #config file has sensitive data
 .mlflow_uri
+#launch configuration is specific to computer
+.vscode/launch.json
