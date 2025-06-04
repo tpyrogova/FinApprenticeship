@@ -34,11 +34,11 @@ def check_classification_binary(model, X_train, X_test, y_train, y_test):
 
     cmd_test = ConfusionMatrixDisplay.from_estimator(model, X_test, y_test, display_labels=classes, cmap=plt.cm.Blues, ax=axes[0][0])
     axes[0][0].set_title('Test Data')
-    axes[1][0].text(0, 0, classification_report(y_test, test_pred_y, target_names=classes), verticalalignment='top', fontfamily='monospace')
+    axes[1][0].text(0, 0, classification_report(y_test, test_pred_y, target_names=classes, digits=3), verticalalignment='top', fontfamily='monospace')
     axes[1][0].axis('off')
 
     cmd_test = ConfusionMatrixDisplay.from_estimator(model, X_train, y_train, display_labels=classes, cmap=plt.cm.Greens, ax=axes[0][1])
     axes[0][1].set_title('Train Data')
-    axes[1][1].text(0, 0, classification_report(y_train, train_pred_y, target_names=classes), verticalalignment='top', fontfamily='monospace')
+    axes[1][1].text(0, 0, classification_report(y_train, train_pred_y, target_names=classes, digits=3), verticalalignment='top', fontfamily='monospace')
     axes[1][1].axis('off')
 
